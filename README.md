@@ -11,8 +11,15 @@ Caddy HTTP middleware plugin:
 ## Build
 
 ```bash
+# Build from remote module path
 xcaddy build \
-  --with caddy-gitea-limit=.
+  --with github.com/Tryanks/caddy-gitea-limit
+```
+
+```bash
+# Local development build (inside this repository)
+xcaddy build \
+  --with github.com/Tryanks/caddy-gitea-limit=.
 ```
 
 ## Caddyfile
