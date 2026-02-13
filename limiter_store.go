@@ -46,4 +46,10 @@ func (m *GiteaIPLimit) cleanupLocked(now time.Time) {
 			delete(m.anonymousIPs, ip)
 		}
 	}
+
+	for ip, t := range m.nextVerifyAt {
+		if !now.Before(t) {
+			delete(m.nextVerifyAt, ip)
+		}
+	}
 }

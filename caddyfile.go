@@ -2,6 +2,7 @@ package gitealimit
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/caddyserver/caddy/v2"
@@ -27,6 +28,31 @@ func (m *GiteaIPLimit) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 					return d.ArgErr()
 				}
 				m.CookieName = d.Val()
+			case "trust_authorization":
+				if !d.NextArg() {
+					return d.ArgErr()
+				}
+				v := strings.ToLower(strings.TrimSpace(d.Val()))
+				switch v {
+				case "true", "1", "yes", "on":
+					b := true
+					m.TrustAuthorization = &b
+				case "false", "0", "no", "off":
+					b := false
+					m.TrustAuthorization = &b
+				default:
+					return d.Errf("invalid trust_authorization: %s", d.Val())
+				}
+			case "verify_cooldown":
+				if !d.NextArg() {
+					return d.ArgErr()
+				}
+				dur, err := time.ParseDuration(d.Val())
+				if err != nil {
+					return d.Errf("invalid verify_cooldown duration: %v", err)
+				}
+				cd := caddy.Duration(dur)
+				m.VerifyCooldown = &cd
 			case "limit":
 				if !d.NextArg() {
 					return d.ArgErr()

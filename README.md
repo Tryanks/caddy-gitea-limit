@@ -6,6 +6,7 @@ Caddy HTTP middleware plugin:
 - Logged-in IP:
   - Must have cookie `i_like_gitea` (configurable)
   - Cookie is verified against configured Gitea API
+  - Alternatively (optional), a valid `Authorization` header is verified against the same Gitea API (useful for Git over HTTPS)
   - If valid, this IP is trusted for `6h` (configurable) with no rate limit
 
 ## Build
@@ -31,6 +32,8 @@ xcaddy build \
       gitea_url http://127.0.0.1:3000
       verify_path /api/v1/user
       cookie_name i_like_gitea
+      trust_authorization true
+      verify_cooldown 10s
       limit 100
       window 5m
       trusted_for 6h
@@ -46,5 +49,7 @@ xcaddy build \
 
 - The plugin identifies client IP from `RemoteAddr`.
 - Cookie verification sends request to `GET {gitea_url}{verify_path}` with the same cookie.
+- Authorization verification sends request to `GET {gitea_url}{verify_path}` with the same `Authorization` header.
 - API response `200` is treated as valid session.
+- Failed verifications are throttled per IP by `verify_cooldown` to reduce load on Gitea.
 - If Gitea API is unavailable, request falls back to anonymous rate limit path.

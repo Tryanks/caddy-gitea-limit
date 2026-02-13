@@ -33,6 +33,7 @@ func (m *GiteaIPLimit) Provision(ctx caddy.Context) error {
 	}
 	m.anonymousIPs = make(map[string]*anonWindow)
 	m.trustedIPs = make(map[string]time.Time)
+	m.nextVerifyAt = make(map[string]time.Time)
 	m.lastCleanup = time.Now()
 
 	return nil
@@ -57,6 +58,9 @@ func (m *GiteaIPLimit) Validate() error {
 	if time.Duration(m.Timeout) <= 0 {
 		return fmt.Errorf("timeout must be > 0")
 	}
+	if m.VerifyCooldown != nil && time.Duration(*m.VerifyCooldown) < 0 {
+		return fmt.Errorf("verify_cooldown must be >= 0")
+	}
 	return nil
 }
 
@@ -66,6 +70,14 @@ func (m *GiteaIPLimit) setDefaults() {
 	}
 	if m.CookieName == "" {
 		m.CookieName = "i_like_gitea"
+	}
+	if m.TrustAuthorization == nil {
+		b := true
+		m.TrustAuthorization = &b
+	}
+	if m.VerifyCooldown == nil {
+		d := caddy.Duration(10 * time.Second)
+		m.VerifyCooldown = &d
 	}
 	if m.Limit == 0 {
 		m.Limit = 100

@@ -20,27 +20,63 @@ func (m *GiteaIPLimit) ServeHTTP(w http.ResponseWriter, r *http.Request, next ca
 		return caddyhttp.Error(http.StatusForbidden, fmt.Errorf("unable to determine client IP"))
 	}
 
+	cooldownActive := false
 	m.mu.Lock()
 	m.cleanupLocked(now)
 	if expireAt, ok := m.trustedIPs[ip]; ok && now.Before(expireAt) {
 		m.mu.Unlock()
 		return next.ServeHTTP(w, r)
 	}
+	if nextAt, ok := m.nextVerifyAt[ip]; ok && now.Before(nextAt) {
+		cooldownActive = true
+	}
 	m.mu.Unlock()
 
-	cookie, err := r.Cookie(m.CookieName)
-	if err == nil && strings.TrimSpace(cookie.Value) != "" {
-		valid, verifyErr := m.verifyGiteaCookie(r.Context(), cookie)
-		if verifyErr != nil {
-			m.logger.Warn("gitea cookie verification failed", zap.String("ip", ip), zap.Error(verifyErr))
+	attemptedVerify := false
+
+	if !cooldownActive {
+		cookie, err := r.Cookie(m.CookieName)
+		if err == nil && strings.TrimSpace(cookie.Value) != "" {
+			attemptedVerify = true
+			valid, verifyErr := m.verifyGiteaCookie(r.Context(), cookie)
+			if verifyErr != nil {
+				m.logger.Warn("gitea cookie verification failed", zap.String("ip", ip), zap.Error(verifyErr))
+			}
+			if valid {
+				m.mu.Lock()
+				m.trustedIPs[ip] = now.Add(time.Duration(m.TrustedFor))
+				delete(m.anonymousIPs, ip)
+				delete(m.nextVerifyAt, ip)
+				m.mu.Unlock()
+				return next.ServeHTTP(w, r)
+			}
 		}
-		if valid {
-			m.mu.Lock()
-			m.trustedIPs[ip] = now.Add(time.Duration(m.TrustedFor))
-			delete(m.anonymousIPs, ip)
-			m.mu.Unlock()
-			return next.ServeHTTP(w, r)
+	}
+
+	if !cooldownActive && (m.TrustAuthorization == nil || *m.TrustAuthorization) {
+		auth := strings.TrimSpace(r.Header.Get("Authorization"))
+		if auth != "" {
+			attemptedVerify = true
+			valid, verifyErr := m.verifyGiteaAuthorization(r.Context(), auth)
+			if verifyErr != nil {
+				m.logger.Warn("gitea authorization verification failed", zap.String("ip", ip), zap.Error(verifyErr))
+			}
+			if valid {
+				m.mu.Lock()
+				m.trustedIPs[ip] = now.Add(time.Duration(m.TrustedFor))
+				delete(m.anonymousIPs, ip)
+				delete(m.nextVerifyAt, ip)
+				m.mu.Unlock()
+				return next.ServeHTTP(w, r)
+			}
 		}
+	}
+
+	if attemptedVerify && m.VerifyCooldown != nil && time.Duration(*m.VerifyCooldown) > 0 {
+		// Throttle repeated verification attempts from the same IP.
+		m.mu.Lock()
+		m.nextVerifyAt[ip] = now.Add(time.Duration(*m.VerifyCooldown))
+		m.mu.Unlock()
 	}
 
 	allowed, retryAfter := m.allowAnonymous(ip, now)

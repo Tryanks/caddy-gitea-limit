@@ -7,14 +7,23 @@ import (
 	"strings"
 )
 
-func (m *GiteaIPLimit) verifyGiteaCookie(ctx context.Context, cookie *http.Cookie) (bool, error) {
-	base := strings.TrimRight(m.GiteaURL, "/")
-	path := m.VerifyPath
-	if !strings.HasPrefix(path, "/") {
-		path = "/" + path
+func (m *GiteaIPLimit) verifyGiteaAuthorization(ctx context.Context, authorization string) (bool, error) {
+	authorization = strings.TrimSpace(authorization)
+	if authorization == "" {
+		return false, nil
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+path, nil)
+	req, err := m.newVerifyRequest(ctx)
+	if err != nil {
+		return false, err
+	}
+	req.Header.Set("Authorization", authorization)
+
+	return m.doVerify(req)
+}
+
+func (m *GiteaIPLimit) verifyGiteaCookie(ctx context.Context, cookie *http.Cookie) (bool, error) {
+	req, err := m.newVerifyRequest(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -23,6 +32,19 @@ func (m *GiteaIPLimit) verifyGiteaCookie(ctx context.Context, cookie *http.Cooki
 		Value: cookie.Value,
 	})
 
+	return m.doVerify(req)
+}
+
+func (m *GiteaIPLimit) newVerifyRequest(ctx context.Context) (*http.Request, error) {
+	base := strings.TrimRight(m.GiteaURL, "/")
+	path := m.VerifyPath
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	return http.NewRequestWithContext(ctx, http.MethodGet, base+path, nil)
+}
+
+func (m *GiteaIPLimit) doVerify(req *http.Request) (bool, error) {
 	resp, err := m.client.Do(req)
 	if err != nil {
 		return false, err

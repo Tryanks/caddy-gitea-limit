@@ -18,15 +18,24 @@ func init() {
 }
 
 // GiteaIPLimit limits anonymous requests by IP and lifts limits for trusted IPs
-// that present a valid Gitea session cookie.
+// that present a valid Gitea session cookie (and optionally a valid Authorization header).
 type GiteaIPLimit struct {
-	GiteaURL   string         `json:"gitea_url,omitempty"`
-	VerifyPath string         `json:"verify_path,omitempty"`
-	CookieName string         `json:"cookie_name,omitempty"`
-	Limit      int            `json:"limit,omitempty"`
-	Window     caddy.Duration `json:"window,omitempty"`
-	TrustedFor caddy.Duration `json:"trusted_for,omitempty"`
-	Timeout    caddy.Duration `json:"timeout,omitempty"`
+	GiteaURL   string `json:"gitea_url,omitempty"`
+	VerifyPath string `json:"verify_path,omitempty"`
+	CookieName string `json:"cookie_name,omitempty"`
+	// TrustAuthorization controls whether a valid Authorization header
+	// (e.g. Git over HTTPS Basic auth / token) can also lift the rate limit.
+	//
+	// When enabled, the handler verifies the header by calling Gitea's
+	// configured VerifyPath and checking for a 200 response.
+	TrustAuthorization *bool `json:"trust_authorization,omitempty"`
+	// VerifyCooldown reduces load on Gitea by throttling repeated failed
+	// verification attempts per IP.
+	VerifyCooldown *caddy.Duration `json:"verify_cooldown,omitempty"`
+	Limit          int             `json:"limit,omitempty"`
+	Window         caddy.Duration  `json:"window,omitempty"`
+	TrustedFor     caddy.Duration  `json:"trusted_for,omitempty"`
+	Timeout        caddy.Duration  `json:"timeout,omitempty"`
 
 	client *http.Client
 	logger *zap.Logger
@@ -34,6 +43,7 @@ type GiteaIPLimit struct {
 	mu           sync.Mutex
 	anonymousIPs map[string]*anonWindow
 	trustedIPs   map[string]time.Time
+	nextVerifyAt map[string]time.Time
 	lastCleanup  time.Time
 }
 
